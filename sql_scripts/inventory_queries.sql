@@ -79,54 +79,72 @@ SELECT * FROM customer_sales_summary ORDER BY total_spent DESC LIMIT 10;
  --If sufficient: deducts inventory, creates an orders row and order_items row, calculates total.
 
 -- PostgreSQL function
-CREATE OR REPLACE FUNCTION process_new_order(p_customer_id INT, p_product_id INT, p_quantity INT)
-RETURNS TABLE (result TEXT, new_order_id INT) AS $$
+CREATE OR REPLACE FUNCTION ProcessNewOrder(
+    p_customer_id INT,
+    p_product_id  INT,
+    p_quantity    INT
+)
+RETURNS TABLE (
+    result       TEXT,
+    new_order_id INT
+)
+AS $proc$
 DECLARE
-v_stock INT;
-v_price DECIMAL(10,2);
-v_order_id INT;
+    v_stock    INT;
+    v_price    NUMERIC(10,2);
+    v_order_id INT;
 BEGIN
-IF p_quantity <= 0 THEN
-RAISE EXCEPTION 'Quantity must be positive';
-END IF;
+    IF p_quantity <= 0 THEN
+        RAISE EXCEPTION 'Quantity must be positive';
+    END IF;
 
+    -- Check product exists and get price
+    SELECT price
+      INTO v_price
+      FROM products
+     WHERE product_id = p_product_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Product with id % not found', p_product_id;
+    END IF;
 
--- Check product exists and get price
-SELECT price INTO v_price FROM products WHERE product_id = p_product_id;
-IF NOT FOUND THEN
-RAISE EXCEPTION 'Product with id % not found', p_product_id;
-END IF;
+    -- Lock inventory row
+    SELECT quantity_on_hand
+      INTO v_stock
+      FROM inventory
+     WHERE product_id = p_product_id
+     FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Inventory record for product % not found', p_product_id;
+    END IF;
 
+    IF v_stock < p_quantity THEN
+        RAISE EXCEPTION 'Insufficient stock: available %, requested %',
+                        v_stock, p_quantity;
+    END IF;
 
--- Lock the inventory row to prevent race conditions
-SELECT quantity_on_hand INTO v_stock FROM inventory WHERE product_id = p_product_id FOR UPDATE;
-IF NOT FOUND THEN
-RAISE EXCEPTION 'Inventory record for product % not found', p_product_id;
-END IF;
+    -- Deduct inventory
+    UPDATE inventory
+       SET quantity_on_hand = quantity_on_hand - p_quantity
+     WHERE product_id = p_product_id;
 
+    -- Create order
+    INSERT INTO orders (customer_id, order_date, total_amount, order_status)
+    VALUES (p_customer_id, now(), 0, 'Pending')
+    RETURNING order_id INTO v_order_id;
 
-IF v_stock < p_quantity THEN
-RAISE EXCEPTION 'Insufficient stock for product %: available %, requested %', p_product_id, v_stock, p_quantity;
-END IF;
+    -- Create order item
+    INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase)
+    VALUES (v_order_id, p_product_id, p_quantity, v_price);
 
+    -- Update order total
+    UPDATE orders
+       SET total_amount = (
+           SELECT COALESCE(SUM(quantity * price_at_purchase),0)
+           FROM order_items
+           WHERE order_id = v_order_id
+       )
+     WHERE order_id = v_order_id;
 
--- Deduct inventory
-UPDATE inventory SET quantity_on_hand = quantity_on_hand - p_quantity WHERE product_id = p_product_id;
-
-
--- Create order
-INSERT INTO orders (customer_id, order_date, total_amount, order_status)
-VALUES (p_customer_id, now(), 0, 'Pending')
-RETURNING order_id INTO v_order_id;
-
-
--- Create order item
-INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase)
-VALUES (v_order_id, p_product_id, p_quantity, v_price);
-
--- Update order total
-UPDATE orders
-SET total_order_amount = (SELECT SUM(quantity * price_at_purchase) FROM order_items WHERE order_id = v_order_id)
-WHERE order_id = v_order_id;
-RETURN QUERY SELECT 'Order processed successfully', v_order_id;
+    RETURN QUERY SELECT 'Order processed successfully', v_order_id;
 END;
+$proc$ LANGUAGE plpgsql;
