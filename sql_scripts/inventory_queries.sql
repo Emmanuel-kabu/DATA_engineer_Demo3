@@ -104,7 +104,7 @@ BEGIN
     END IF;
 
     -- Create new order (empty for now)
-    INSERT INTO orders (customer_id, order_date, total_amount, order_status)
+    INSERT INTO orders (customer_id, order_date, total_order_amount, order_status)
     VALUES (v_customer_id, now(), 0, 'Pending')
     RETURNING orders.order_id INTO v_order_id;
 
@@ -161,7 +161,7 @@ BEGIN
     -- Recalculate total order amount
     UPDATE orders
     SET total_amount = (
-        SELECT COALESCE(SUM(quantity * price_at_purchase), 0)
+        SELECT COALESCE(SUM(quantity * item_price), 0)
         FROM order_items
         WHERE order_id = v_order_id
     )
