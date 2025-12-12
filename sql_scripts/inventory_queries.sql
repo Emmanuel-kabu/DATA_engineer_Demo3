@@ -56,13 +56,13 @@ ORDER BY customer_id, order_date;
 
 -- Performance optimization- views and stored procedures
 -- CustomerSalesSummary view
-CATE OR REPLACE VIEW customer_sales_summary AS
+CREATE OR REPLACE VIEW customer_sales_summary AS
 SELECT
 c.customer_id,
 c.full_name,
 c.email,
-COALESCE(SUM(o.total_amount),0) AS total_spent,
-COUNT(REo.order_id) FILTER (WHERE o.order_status IN ('Shipped','Delivered')) AS completed_orders_count
+COALESCE(SUM(o.total_order_amount),0) AS total_spent,
+COUNT(o.order_id) FILTER (WHERE o.order_status IN ('Shipped','Delivered')) AS completed_orders_count
 FROM customers c
 LEFT JOIN orders o ON o.customer_id = c.customer_id
 GROUP BY c.customer_id, c.full_name, c.email;
@@ -78,9 +78,8 @@ SELECT * FROM customer_sales_summary ORDER BY total_spent DESC LIMIT 10;
 --Checks inventory.
  --If sufficient: deducts inventory, creates an orders row and order_items row, calculates total.
 
-If insufficient: raises an exception (transaction rolled back).
-
-CREATE OR REPLACE FUNCTION ProcessNewOrder(p_customer_id INT, p_product_id INT, p_quantity INT)
+-- PostgreSQL function
+CREATE OR REPLACE FUNCTION process_new_order(p_customer_id INT, p_product_id INT, p_quantity INT)
 RETURNS TABLE (result TEXT, new_order_id INT) AS $$
 DECLARE
 v_stock INT;
@@ -111,7 +110,6 @@ RAISE EXCEPTION 'Insufficient stock for product %: available %, requested %', p_
 END IF;
 
 
--- Begin transaction is implicit in PL/pgSQL function; but ensure changes are atomic
 -- Deduct inventory
 UPDATE inventory SET quantity_on_hand = quantity_on_hand - p_quantity WHERE product_id = p_product_id;
 
@@ -125,3 +123,10 @@ RETURNING order_id INTO v_order_id;
 -- Create order item
 INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase)
 VALUES (v_order_id, p_product_id, p_quantity, v_price);
+
+-- Update order total
+UPDATE orders
+SET total_order_amount = (SELECT SUM(quantity * price_at_purchase) FROM order_items WHERE order_id = v_order_id)
+WHERE order_id = v_order_id;
+RETURN QUERY SELECT 'Order processed successfully', v_order_id;
+END;
