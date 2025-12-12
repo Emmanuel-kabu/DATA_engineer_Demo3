@@ -77,74 +77,101 @@ SELECT * FROM customer_sales_summary ORDER BY total_spent DESC LIMIT 10;
 --Accepts customer_id, product_id, quantity.
 --Checks inventory.
  --If sufficient: deducts inventory, creates an orders row and order_items row, calculates total.
-
--- PostgreSQL function
-CREATE OR REPLACE FUNCTION ProcessNewOrder(
-    p_customer_id INT,
-    p_product_id  INT,
-    p_quantity    INT
+CREATE OR REPLACE FUNCTION ProcessNewOrder_JSON(
+    p_order JSONB
 )
 RETURNS TABLE (
-    result       TEXT,
-    new_order_id INT
+    status TEXT,
+    order_id INT,
+    details JSONB
 )
 AS $proc$
 DECLARE
-    v_stock    INT;
-    v_price    NUMERIC(10,2);
+    v_customer_id INT;
     v_order_id INT;
+    v_item JSONB;
+    v_product_id INT;
+    v_quantity INT;
+    v_price NUMERIC(10,2);
+    v_stock INT;
+    v_detail_list JSONB := '[]'::JSONB;
 BEGIN
-    IF p_quantity <= 0 THEN
-        RAISE EXCEPTION 'Quantity must be positive';
+    -- Extract customer ID
+    v_customer_id := (p_order->>'customer_id')::INT;
+
+    IF v_customer_id IS NULL THEN
+        RAISE EXCEPTION 'customer_id is required in the JSON input';
     END IF;
 
-    -- Check product exists and get price
-    SELECT price
-      INTO v_price
-      FROM products
-     WHERE product_id = p_product_id;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Product with id % not found', p_product_id;
-    END IF;
-
-    -- Lock inventory row
-    SELECT quantity_on_hand
-      INTO v_stock
-      FROM inventory
-     WHERE product_id = p_product_id
-     FOR UPDATE;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Inventory record for product % not found', p_product_id;
-    END IF;
-
-    IF v_stock < p_quantity THEN
-        RAISE EXCEPTION 'Insufficient stock: available %, requested %',
-                        v_stock, p_quantity;
-    END IF;
-
-    -- Deduct inventory
-    UPDATE inventory
-       SET quantity_on_hand = quantity_on_hand - p_quantity
-     WHERE product_id = p_product_id;
-
-    -- Create order
+    -- Create new order (empty for now)
     INSERT INTO orders (customer_id, order_date, total_amount, order_status)
-    VALUES (p_customer_id, now(), 0, 'Pending')
-    RETURNING order_id INTO v_order_id;
+    VALUES (v_customer_id, now(), 0, 'Pending')
+    RETURNING orders.order_id INTO v_order_id;
 
-    -- Create order item
-    INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase)
-    VALUES (v_order_id, p_product_id, p_quantity, v_price);
+    -- Loop through all order items
+    FOR v_item IN SELECT jsonb_array_elements(p_order->'items')
+    LOOP
+        v_product_id := (v_item->>'product_id')::INT;
+        v_quantity   := (v_item->>'quantity')::INT;
 
-    -- Update order total
+        IF v_quantity <= 0 THEN
+            RAISE EXCEPTION 'Quantity must be positive for product %', v_product_id;
+        END IF;
+
+        -- Get product price
+        SELECT price INTO v_price
+        FROM products
+        WHERE product_id = v_product_id;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Product % not found', v_product_id;
+        END IF;
+
+        -- Stock check
+        SELECT quantity_on_hand INTO v_stock
+        FROM inventory
+        WHERE product_id = v_product_id
+        FOR UPDATE;
+
+        IF v_stock < v_quantity THEN
+            RAISE EXCEPTION 'Insufficient stock for product %: available %, requested %',
+                v_product_id, v_stock, v_quantity;
+        END IF;
+
+        -- Deduct stock
+        UPDATE inventory
+        SET quantity_on_hand = quantity_on_hand - v_quantity
+        WHERE product_id = v_product_id;
+
+        -- Insert order item
+        INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase)
+        VALUES (v_order_id, v_product_id, v_quantity, v_price);
+
+        -- Append details to JSON list
+        v_detail_list := v_detail_list || jsonb_build_array(
+            jsonb_build_object(
+                'product_id', v_product_id,
+                'quantity', v_quantity,
+                'price', v_price,
+                'status', 'added'
+            )
+        );
+    END LOOP;
+
+    -- Recalculate total order amount
     UPDATE orders
-       SET total_amount = (
-           SELECT COALESCE(SUM(quantity * price_at_purchase),0)
-           FROM order_items
-           WHERE order_id = v_order_id
-       )
-     WHERE order_id = v_order_id;
+    SET total_amount = (
+        SELECT COALESCE(SUM(quantity * price_at_purchase), 0)
+        FROM order_items
+        WHERE order_id = v_order_id
+    )
+    WHERE order_id = v_order_id;
 
-    RETURN QUERY SELECT 'Order processed successfully', v_order_id;
+    RETURN QUERY SELECT
+        'Order processed successfully'::TEXT AS status,
+        v_order_id AS order_id,
+        v_detail_list AS details;
+
 END;
 $proc$ LANGUAGE plpgsql;
+
