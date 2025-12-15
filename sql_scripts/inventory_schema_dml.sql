@@ -1,6 +1,5 @@
 
 -- 1. Insert 500 customers
--- 1. Insert 500 customers with Ghanaian names and locations
 INSERT INTO customers (full_name, email, phone, shipping_address) VALUES
 ('Emma Kabu', 'emma.kabu@email.com', '+233245678901', '123 Main St, Accra, AC'),
 ('Emma Kusi', 'emma.kusi@email.com', '+233245678902', '456 Oak Ave, Kumasi, AK'),
