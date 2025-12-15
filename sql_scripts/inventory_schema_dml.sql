@@ -92,12 +92,7 @@ CROSS JOIN LATERAL (
 -- Reset the sequence if needed
 SELECT setval('products_product_id_seq', 15, true);
 
--- Now insert unique products with unique names
--- 1. First, let's clear the existing duplicate products (keep first 15 manually inserted ones)
-
---ALTER SEQUENCE products_product_id_seq RESTART WITH 16;
-
--- 2. Now generate 485 unique products with guaranteed unique names
+-- 2. Generate 500 unique products with guaranteed unique names
 WITH RECURSIVE product_categories AS (
     SELECT category, base_name, ROW_NUMBER() OVER () as rn
     FROM (VALUES 

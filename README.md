@@ -61,16 +61,6 @@ psql -U inventory_user -d inventory_db -f .\sql_scripts\inventory_queries.sql
 ## File locations
 - `sql_scripts/inventory_schema_ddl.sql` — schema and indexes
 - `sql_scripts/inventory_schema_dml.sql` — data population script (500+ records)
-- `sql_scripts/inventory_queries.sql` — example queries and stored procedure (review/fix before use)
-- `requirements.txt` — any Python/third-party requirements (if present)
+- `sql_scripts/inventory_queries.sql` — example queries and stored procedure 
+- `requirements.txt` — contains project libraries
 
-## Next steps / Recommendations
-- Review and correct the SQL in `inventory_queries.sql` to match the schema.
-- Run the DDL first, then the DML.
-- Use a dedicated DB user with limited privileges for testing.
-- If you want, I can:
-  - Fix `inventory_queries.sql` to match the schema.
-  - Add a small script to run the setup automatically (PowerShell or Python).
-
----
-README generated from repository SQL files on your machine. File: `README.md` in the repository root.
