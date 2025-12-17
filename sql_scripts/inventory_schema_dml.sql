@@ -12,7 +12,8 @@ INSERT INTO customers (full_name, email, phone, shipping_address) VALUES
 ('William Abugri', 'william.abugri@email.com', '+233245678909', '951 Aspen Ct, Walewale, WA'),
 ('Linda Amonu', 'linda.amonu@email.com', '+233245678910', '258 Kuffour Rd, Sagnarigu, TL');
 
--- Generate remaining 490 customers with UNIQUE full names
+-- Generate additional 490 customers
+
 INSERT INTO customers (full_name, email, phone, shipping_address)
 WITH RECURSIVE unique_names AS (
     -- Start with first names and last names
@@ -89,7 +90,7 @@ CROSS JOIN LATERAL (
 -- 2. Insert 500 products
 
 -- Reset the sequence if needed
-SELECT setval('products_product_id_seq', 15, true);
+SELECT setval('products_product_id_seq', 0, true);
 
 -- 2. Generate 500 unique products 
 WITH RECURSIVE product_categories AS (
@@ -459,7 +460,7 @@ SET total_order_amount = (
     WHERE oi.order_id = o.order_id
 );
 
--- Let's verify the data counts
+-- Verify the data counts
 SELECT 
     (SELECT COUNT(*) FROM customers) as customer_count,
     (SELECT COUNT(*) FROM products) as product_count,

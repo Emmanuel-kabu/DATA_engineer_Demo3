@@ -73,7 +73,7 @@ SELECT * FROM customer_sales_summary ORDER BY total_spent DESC LIMIT 10;
 
 
 -- Stored Procedure: ProcessNewOrder
---This procedure performs the transactional logic to process a new order for a single product. It:
+--This procedure performs the transactional logic to process a new order for a multiple products. It:
 --Accepts customer_id, product_id, quantity.
 --Checks inventory.
  --If sufficient: deducts inventory, creates an orders row and order_items row, calculates total.
