@@ -417,40 +417,62 @@ LIMIT 500;
 INSERT INTO inventory (product_id, quantity_in_stock, last_restocked)
 SELECT 
     product_id,
-    FLOOR(RANDOM() * 1000)::INT,
-    CURRENT_TIMESTAMP - INTERVAL '1 day' * FLOOR(RANDOM() * 90)::INT
+    FLOOR(RANDOM() * 100 + 10) :: INT,
+    CURRENT_DATE - INTERVAL '1 day' * FLOOR(RANDOM() * 90)::INT
 FROM products
-ORDER BY product_id;
+ORDER BY RANDOM();
 
 -- 4. Insert 500 orders
 INSERT INTO orders (customer_id, order_date, total_order_amount, order_status)
 SELECT 
     customer_id,
-    CURRENT_TIMESTAMP - INTERVAL '1 day' * FLOOR(RANDOM() * 365)::INT - INTERVAL '1 hour' * FLOOR(RANDOM() * 24)::INT,
-    (RANDOM() * 1000 + 10)::DECIMAL(10,2),
-    (ARRAY['Pending', 'Shipped', 'Delivered', 'Cancelled'])[1 + FLOOR(RANDOM() * 4)::INT]
+    CURRENT_TIMESTAMP 
+        - INTERVAL '1 day' * FLOOR((RANDOM()^2) * 365)::INT
+        - INTERVAL '1 hour' * FLOOR(RANDOM() * 24)::INT,
+    (10 + (RANDOM() * RANDOM() * 1000))::NUMERIC(10,2),
+    CASE
+        WHEN RANDOM() < 0.05 THEN 'Cancelled'
+        WHEN RANDOM() < 0.20 THEN 'Shipped'
+        WHEN RANDOM() < 0.50 THEN 'Pending'
+        ELSE 'Delivered'
+    END
 FROM customers
 ORDER BY RANDOM()
 LIMIT 500;
 
+
 -- 5. Insert order items (multiple items per order)
 WITH order_numbers AS (
-    SELECT order_id, ROW_NUMBER() OVER () as rn
+    SELECT order_id
     FROM orders
 )
 INSERT INTO order_items (order_id, product_id, quantity, item_price)
 SELECT 
     o.order_id,
     p.product_id,
-    FLOOR(RANDOM() * 10)::INT + 1,
+    FLOOR(
+        CASE
+            WHEN RANDOM() < 0.7 THEN 1 + FLOOR(RANDOM() * 2)
+            ELSE 1 + FLOOR(RANDOM() * 5)
+        END
+    )::INT,
     p.price
 FROM order_numbers o
 CROSS JOIN LATERAL (
-    SELECT product_id, price 
-    FROM products 
-    ORDER BY RANDOM() 
-    LIMIT (FLOOR(RANDOM() * 5)::INT + 1)
+    SELECT DISTINCT ON (product_id) product_id, price
+    FROM products
+    ORDER BY product_id, RANDOM() * 
+        CASE
+            WHEN product_id % 5 = 0 THEN 2
+            ELSE 1
+        END
+    LIMIT CASE
+        WHEN RANDOM() < 0.6 THEN 1 + FLOOR(RANDOM() * 2)
+        ELSE 3 + FLOOR(RANDOM() * 3)
+    END
 ) p;
+
+
 
 -- Update orders total_amount based on order_items
 UPDATE orders o

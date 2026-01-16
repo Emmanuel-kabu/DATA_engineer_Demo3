@@ -51,3 +51,33 @@ CREATE INDEX idx_customer_id ON orders(customer_id);
 CREATE INDEX idx_inventory_product_id ON inventory(product_id);
 CREATE INDEX idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX idx_order_items_product_id ON order_items(product_id);
+
+-- Simple error logging table and helper function
+-- Use `log_error(level, source, message, details)` to record failures or diagnostics.
+-- `details` is optional JSON (Postgres `jsonb`).
+
+DROP TABLE IF EXISTS error_logs CASCADE;
+CREATE TABLE error_logs (
+    error_id SERIAL PRIMARY KEY,
+    occurred_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    level VARCHAR(20) NOT NULL DEFAULT 'ERROR',
+    source VARCHAR(200),
+    message TEXT NOT NULL,
+    details JSONB
+);
+
+-- Helper function to insert error log entries. Silently ignores failures to avoid cascading errors.
+CREATE OR REPLACE FUNCTION log_error(p_level VARCHAR DEFAULT 'ERROR', p_source VARCHAR DEFAULT NULL, p_message TEXT, p_details JSONB DEFAULT NULL)
+RETURNS VOID LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO error_logs(level, source, message, details)
+    VALUES (COALESCE(p_level, 'ERROR'), p_source, p_message, p_details);
+EXCEPTION WHEN OTHERS THEN
+    -- swallow any error so logging doesn't break application flow
+    NULL;
+END;
+$$;
+
+-- Example usage:
+-- SELECT log_error('ERROR', 'inventory_service', 'Failed to update stock', '{"product_id": 123, "attempt": 1}'::jsonb);
+
