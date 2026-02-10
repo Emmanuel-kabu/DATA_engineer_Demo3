@@ -54,7 +54,7 @@ CREATE INDEX idx_order_items_product_id ON order_items(product_id);
 
 -- Simple error logging table and helper function
 -- Use `log_error(level, source, message, details)` to record failures or diagnostics.
--- `details` is optional JSON (Postgres `jsonb`).
+
 
 DROP TABLE IF EXISTS error_logs CASCADE;
 CREATE TABLE error_logs (
